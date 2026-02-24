@@ -1,0 +1,1590 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Colorado Building Analysis Dashboard - NSI-Enhanced USA Structures Dataset</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --warning-gradient: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            --dark-gradient: linear-gradient(135deg, #30cfd0 0%, #330867 100%);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+            transition: all 0.3s ease;
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
+        }
+
+        .loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 30px 40px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header h1 {
+            font-size: 2.2em;
+            margin-bottom: 15px;
+            font-weight: 400;
+        }
+
+        .header p {
+            font-size: 1em;
+            opacity: 0.9;
+        }
+
+        .dataset-badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 8px 16px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+
+        .content {
+            padding: 40px;
+            min-height: 600px;
+        }
+
+        .section-header {
+            margin-bottom: 35px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+            position: relative;
+        }
+
+        .section-header::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 100px;
+            height: 2px;
+            background: #2c3e50;
+        }
+
+        .section-header h2 {
+            color: #333;
+            font-size: 1.8em;
+            margin-bottom: 12px;
+            font-weight: 500;
+        }
+
+        .section-header p {
+            color: #666;
+            font-size: 1em;
+            line-height: 1.6;
+        }
+
+        .controls {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 4px;
+            margin-bottom: 30px;
+            border: 1px solid #dee2e6;
+        }
+
+        .control-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .control-group label {
+            font-weight: 600;
+            color: #495057;
+            min-width: 120px;
+        }
+
+        .control-group select,
+        .control-group input {
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 15px;
+            transition: all 0.3s ease;
+            background: white;
+            min-width: 150px;
+        }
+
+        .control-group select:focus,
+        .control-group input:focus {
+            outline: none;
+            border-color: #2c3e50;
+        }
+
+        .toggle-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toggle-switch input[type="checkbox"] {
+            width: 50px;
+            height: 26px;
+            appearance: none;
+            background: #ddd;
+            border-radius: 13px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .toggle-switch input[type="checkbox"]:checked {
+            background: #2c3e50;
+        }
+
+        .toggle-switch input[type="checkbox"]::after {
+            content: '';
+            position: absolute;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: white;
+            top: 2px;
+            left: 2px;
+            transition: left 0.3s;
+        }
+
+        .toggle-switch input[type="checkbox"]:checked::after {
+            left: 26px;
+        }
+
+        .chart-container {
+            background: white;
+            padding: 25px;
+            border-radius: 4px;
+            margin-bottom: 30px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+            margin-bottom: 35px;
+        }
+
+        .stat-card {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 25px;
+            text-align: center;
+        }
+
+        .stat-card:hover {
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-value {
+            font-size: 2.5em;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #2c3e50;
+        }
+
+        .stat-label {
+            font-size: 1.1em;
+            font-weight: 500;
+            color: #6c757d;
+        }
+
+        .info-box {
+            background: #f0f8ff;
+            padding: 20px;
+            border-radius: 4px;
+            border-left: 4px solid #2196f3;
+            margin-bottom: 25px;
+        }
+
+        .info-box h3 {
+            color: #1565c0;
+            margin-bottom: 12px;
+            font-size: 1.2em;
+            font-weight: 600;
+        }
+
+        .info-box p {
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .error-box {
+            background: #ffebee;
+            padding: 20px;
+            border-radius: 4px;
+            border-left: 4px solid #f44336;
+            margin: 20px 0;
+            display: none;
+        }
+
+        .error-box.show {
+            display: block;
+        }
+
+        .export-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .export-button {
+            padding: 10px 20px;
+            background: #34495e;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .export-button:hover {
+            background: #2c3e50;
+        }
+
+        .map-container {
+            background: white;
+            padding: 20px;
+            border-radius: 4px;
+            margin-bottom: 30px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            min-height: 600px;
+            position: relative;
+        }
+
+        .map-legend-overlay {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px 10px;
+            border-radius: 6px;
+            border: none;
+            box-shadow: none;
+            z-index: 999;
+            font-size: 11px;
+            pointer-events: none;
+            line-height: 1.2;
+        }
+
+        .size-legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+
+        .size-legend-circle {
+            background: #888;
+            border-radius: 50%;
+            margin-right: 6px;
+            opacity: 0.5;
+            display: inline-block;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 { font-size: 1.8em; }
+            .content { padding: 20px; }
+            .control-group { flex-direction: column; align-items: flex-start; }
+            .control-group label { min-width: auto; }
+            .stats-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <h1>Colorado Building Analysis Dashboard</h1>
+            <p>Interactive Visualization of Building Inventory Data</p>
+            <div class="dataset-badge">NSI-Enhanced USA Structures Dataset</div>
+        </div>
+
+        <div class="content">
+            <!-- Error Box -->
+            <div class="error-box" id="errorBox">
+                <h4 style="color: #c62828; margin-bottom: 8px;">Data Loading Error</h4>
+                <p id="errorMessage" style="color: #b71c1c;">Unable to load building data. Please ensure co_building_data.json is in the same directory.</p>
+            </div>
+
+            <!-- ==================== OVERVIEW SECTION ==================== -->
+            <div id="overview">
+                <div class="section-header">
+                    <h2>Dashboard Overview</h2>
+                    <p>Comprehensive analysis of Colorado building inventory from NSI-Enhanced USA Structures Dataset</p>
+                </div>
+
+                <!-- Stat Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalBuildings">Loading...</div>
+                        <div class="stat-label">Total Buildings (Cleaned)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="avgYear">Loading...</div>
+                        <div class="stat-label">Average Year Built</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="avgArea">Loading...</div>
+                        <div class="stat-label">Avg Area (sqm)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="occClasses">Loading...</div>
+                        <div class="stat-label">Occupancy Classes</div>
+                    </div>
+                </div>
+
+                <!-- About Box -->
+                <div class="info-box">
+                    <h3>About This Dashboard</h3>
+                    <p>This interactive dashboard analyzes building data from the NSI-Enhanced USA Structures Dataset for Colorado. The analysis includes occupancy distributions, temporal patterns, material characteristics, and geographic visualizations. All visualizations use color-blind friendly palettes and are fully interactive.
+                        Developed by Lang Shao and supervised by Prof. Demi Fang of the <a href="https://structural-futures.org/">Structural Futures Lab</a>. Data visualizations may not be suitable for distribution at this time and should include attribution. If you have any questions, please contact us.
+                    </p>
+                </div>
+
+                <!-- Occupancy Pie Chart -->
+                <div class="chart-container">
+                    <div id="overviewChart"></div>
+                </div>
+
+                <!-- Map Controls -->
+                <div class="controls">
+                    <div class="control-group">
+                        <label>Filter by Occupancy:</label>
+                        <select id="overviewOccFilter" onchange="createOverviewMap()"></select>
+
+                        <label>Filter by Material:</label>
+                        <select id="overviewMaterialFilter" onchange="createOverviewMap()"></select>
+
+                        <label>Filter by Foundation:</label>
+                        <select id="overviewFoundationFilter" onchange="createOverviewMap()"></select>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Color Points By:</label>
+                        <select id="overviewColorBy" onchange="createOverviewMap()">
+                            <option value="OCC_CLS">Occupancy Class</option>
+                            <option value="material_type">Material Type</option>
+                            <option value="foundation_type">Foundation Type</option>
+                            <option value="Est GFA sqmeters">Total GFA (Continuous)</option>
+                        </select>
+
+                        <div class="toggle-switch" style="margin-left: 20px; border-left: 2px solid #ddd; padding-left: 20px;">
+                            <label>Size by GFA:</label>
+                            <input type="checkbox" id="overviewSizeByGFA" onchange="createOverviewMap()">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Map -->
+                <div class="map-container">
+                    <div id="overviewMapPlot"></div>
+                    <div id="mapLegendOverlay" class="map-legend-overlay" style="display: none;"></div>
+                </div>
+
+                <!-- Timeline Chart -->
+                <div class="chart-container">
+                    <div id="overviewTimelineChart"></div>
+                </div>
+
+                <!-- ======== CO Building Hierarchical Distribution Sankey ======== -->
+                <div class="chart-container">
+                    <div class="section-header" style="margin-top: 0; padding-top: 20px; border: none;">
+                        <h3 style="color: #2c3e50;">CO Building Hierarchical Distribution</h3>
+                        <p style="color: #555;">Multi-level breakdown: Occupancy → Area → Height → Year</p>
+                    </div>
+
+                    <div class="controls" style="margin-bottom: 20px; background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                        <div class="control-group">
+                            <label style="font-weight: 600; margin-right: 10px;">Select Occupancy Class:</label>
+                            <select id="hierarchicalOccupancy" onchange="createBuildingDistributionSankey()"
+                                    style="padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 4px; font-size: 14px;">
+                                <option value="all">All Buildings</option>
+                            </select>
+                        </div>
+
+                        <div class="control-group">
+                            <label style="font-weight: 600; margin-right: 10px;">Sankey Diagram View:</label>
+                            <select id="sankeyViewSelector" onchange="createBuildingDistributionSankey()"
+                                    style="padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 4px; font-size: 14px;">
+                                <option value="by_count" selected>By Building Count</option>
+                                <option value="by_gfa">By Total GFA (sqm)</option>
+                                <option value="by_count_simplified">By Building Count (Simplified)</option>
+                                <option value="by_gfa_simplified">By Total GFA (Simplified)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="buildingDistributionSankey"></div>
+                </div>
+
+                <!-- ======== Year → Occupancy → Material → Foundation Sankey ======== -->
+                <div class="chart-container">
+                    <div class="section-header" style="margin-top: 0; padding-top: 20px; border: none;">
+                        <h3 id="yearOccSankeyTitle" style="color: #2c3e50;">Construction Year → Occupancy → Material → Foundation</h3>
+                        <p style="color: #555;">Base: Year → Occupancy. Toggle columns to the right.</p>
+
+                        <div style="margin-top: 8px;">
+                            <label style="margin-right: 16px;">
+                                <input type="checkbox" id="toggleMaterial" checked onchange="handleYearOccToggleChange()">
+                                Show Material
+                            </label>
+                            <label style="margin-right: 16px;">
+                                <input type="checkbox" id="toggleFoundation" checked onchange="handleYearOccToggleChange()">
+                                Show Foundation
+                            </label>
+
+                            <span style="display: inline-block; margin-left: 20px; font-weight: 600;">Metric:</span>
+                            <select id="yearOccMetric" onchange="createYearOccSankey()"
+                                    style="padding: 6px 10px; border: 1px solid #dee2e6; border-radius: 4px; font-size: 13px;">
+                                <option value="count" selected>Buildings count</option>
+                                <option value="gfa">GFA (sqm)</option>
+                            </select>
+
+                            <span style="display: inline-block; margin-left: 20px; font-weight: 600;">Export:</span>
+                            <select id="yearOccExportFormat"
+                                    style="padding: 6px 10px; border: 1px solid #dee2e6; border-radius: 4px; font-size: 13px; margin-left: 6px;">
+                                <option value="png" selected>PNG (raster)</option>
+                                <option value="svg">SVG (vector)</option>
+                                <option value="jpeg">JPEG</option>
+                                <option value="webp">WEBP</option>
+                            </select>
+
+                            <select id="yearOccExportScale" title="Scale for PNG/JPEG/WEBP"
+                                    style="padding: 6px 10px; border: 1px solid #dee2e6; border-radius: 4px; font-size: 13px; margin-left: 6px;">
+                                <option value="1">1×</option>
+                                <option value="2">2×</option>
+                                <option value="3" selected>3×</option>
+                                <option value="4">4×</option>
+                            </select>
+
+                            <label style="margin-left: 8px; font-weight: 500;">
+                                <input type="checkbox" id="yearOccTransparentBg"> Transparent BG
+                            </label>
+
+                            <button onclick="downloadYearOccSankey()"
+                                    style="margin-left: 8px; padding: 6px 10px; border: 1px solid #ced4da; border-radius: 6px; background: #f8f9fa; cursor: pointer;">
+                                Save
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="yearOccSankey"></div>
+                </div>
+
+                <!-- ======== Occupancy Class Hierarchy ======== -->
+                <div class="chart-container">
+                    <div class="section-header" style="margin-top: 0; padding-top: 20px; border: none;">
+                        <h3 style="color: #2c3e50;">Occupancy Class Hierarchy</h3>
+                        <p style="color: #555;">Breakdown of Occupancy Classes (OCC_CLS) into Primary Occupancy types (PRIM_OCC).</p>
+                    </div>
+                    <div id="occupancyHierarchySankey"></div>
+                </div>
+
+                <!-- ======== OCC_CLS → NSI occtype Sankey ======== -->
+                <div class="section-header" style="margin-top: 24px; padding-top: 8px; border: none;">
+                    <h3 style="color: #2c3e50;">OCC_CLS → NSI occtype matches</h3>
+                    <p style="color: #555; margin: 4px 0 12px;">
+                        Each link sums the number of NSI points in <em>polygons whose OCC_CLS equals the left-hand class</em>.
+                        Counts are pooled per class (RES pool, COM pool, ...); points in other classes do not affect this pool.
+                    </p>
+                </div>
+
+                <div class="info-box" id="occSankeyNotes" style="margin-top: 16px;">
+                    <h3>Notes on NSI Damage Categories vs. Our Sankey Labels</h3>
+                    <p>
+                        The NSI technical documentation states that certain occtypes are folded into broader
+                        <em>'damage categories'</em>: <strong>AGR</strong> and <strong>REL</strong> are counted under
+                        <strong>Commercial</strong>, while <strong>GOV</strong> and <strong>EDU</strong> are counted under
+                        <strong>Public</strong>. In this Sankey, we intentionally retain the original occtype labels and do
+                        not re-bucket them into those damage-category umbrellas (e.g., <strong>REL is not folded into Commercial</strong>).
+                    </p>
+                </div>
+                <div id="occClsOccDictSankey" style="height: 1220px;"></div>
+
+                <!-- ======== MIX_SC Distribution ======== -->
+                <div class="chart-container">
+                    <div class="section-header" style="margin-top: 0; padding-top: 20px; border: none;">
+                        <h3 style="color: #2c3e50;">Occupancy Homogeneity Score (MIX_SC) Distribution</h3>
+                        <p style="color: #555;">Distribution of buildings based on the homogeneity of NSI point types within their footprint.</p>
+                    </div>
+                    <div class="controls" style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                        <div class="toggle-switch">
+                            <label for="toggleSameType">Include 'Same Type Only' Category:</label>
+                            <input type="checkbox" id="toggleSameType" onchange="createMixScPieChart()" checked>
+                        </div>
+                    </div>
+                    <div id="mixScPieChart"></div>
+                    <div class="info-box" style="margin-top: 20px;">
+                        <h3>MIX_SC Categories Explained</h3>
+                        <p>
+                            <strong>Same Type Only (NaN in data):</strong> All NSI points inside the building polygon are of the same primary type as the building itself.<br>
+                            <strong>1 Conflict Type (MIX_SC1):</strong> No NSI points of the same type as the building, and all conflicting points are of a single different type.<br>
+                            <strong>Same &amp; Different Types (MIX_SC2):</strong> The building contains NSI points of its own type plus one or more conflicting types.<br>
+                            <strong>&gt;1 Conflict Types (MIX_SC3):</strong> The building contains no NSI points of the same type as the building, and has two or more different conflicting types.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Export Buttons -->
+                <div class="export-buttons">
+                    <button class="export-button" onclick="exportChart('overviewChart', 'co_overview')">Export Chart</button>
+                    <button class="export-button" onclick="exportAllData()">Export All Data</button>
+                </div>
+
+            </div>
+            <!-- END OVERVIEW -->
+
+        </div>
+    </div>
+
+    <script>
+        // ═══════════════════════════════════════════════════════════════
+        // GLOBAL VARIABLES
+        // ═══════════════════════════════════════════════════════════════
+        let buildingData = null;
+        let isDataLoaded = false;
+
+        // Plasma colorscale
+        const plasmaColors = [
+            '#0d0887', '#46039f', '#7201a8', '#9c179e', '#bd3786',
+            '#d8576b', '#ed7953', '#fb9f3a', '#fdca26', '#f0f921'
+        ];
+
+        // Material and Foundation type mappings
+        const materialTypeMap = {
+            'M': 'Masonry',
+            'W': 'Wood',
+            'H': 'Manufactured',
+            'S': 'Steel',
+            'C': 'Concrete'
+        };
+
+        const foundationTypeMap = {
+            'C': 'Crawl Space',
+            'B': 'Basement',
+            'S': 'Slab',
+            'P': 'Pier',
+            'I': 'Pile',
+            'F': 'Fill',
+            'W': 'Solid Wall'
+        };
+
+        // Fixed color mappings for OCC_CLS
+        const FIXED_OCC_COLORS = {
+            'Residential': '#0d0887',
+            'Commercial': '#46039f',
+            'Government': '#7201a8',
+            'Industrial': '#9c179e',
+            'Assembly': '#bd3786',
+            'Unclassified': '#d8576b',
+            'Education': '#ed7953',
+            'Utility and Misc': '#fb9f3a',
+            'Agriculture': '#f0f921'
+        };
+
+        const FIXED_MATERIAL_COLORS = {
+            'W': '#0d0887',
+            'M': '#46039f',
+            'S': '#7201a8',
+            'C': '#bd3786',
+            'H': '#f0f921'
+        };
+
+        const FIXED_FOUNDATION_COLORS = {
+            'B': '#0d0887',
+            'S': '#46039f',
+            'C': '#7201a8',
+            'I': '#9c179e',
+            'P': '#bd3786',
+            'W': '#ed7953',
+            'F': '#f0f921'
+        };
+
+        function getPlasmaColors(n) {
+            if (n <= 10) return plasmaColors.slice(0, n);
+            const colors = [];
+            for (let i = 0; i < n; i++) {
+                const idx = Math.floor(i * 9 / (n - 1));
+                colors.push(plasmaColors[Math.min(idx, 9)]);
+            }
+            return colors;
+        }
+
+        // Safe Plotly wrapper
+        const _origPlot = Plotly.newPlot;
+        Plotly.newPlot = function(gd, data, layout, config) {
+            try {
+                return _origPlot.call(Plotly, gd, data, layout, config);
+            } catch (error) {
+                console.warn('Plotly error on:', gd, error);
+            }
+        };
+
+
+        // ═══════════════════════════════════════════════════════════════
+        // DATA LOADING
+        // ═══════════════════════════════════════════════════════════════
+        async function loadData() {
+            try {
+                console.log('Loading main data file...');
+                const response = await fetch('co_building_data.json');
+                if (!response.ok) throw new Error('Failed to load co_building_data.json');
+
+                buildingData = await response.json();
+
+                // Handle split sample files
+                if (buildingData.metadata?.samples_split && buildingData.metadata?.samples_files) {
+                    console.log('Detected multi-file sample format, loading sample chunks...');
+                    buildingData.building_samples_random = [];
+
+                    for (const fileInfo of buildingData.metadata.samples_files) {
+                        try {
+                            const sampleResponse = await fetch(fileInfo.filename);
+                            if (sampleResponse.ok) {
+                                const sampleData = await sampleResponse.json();
+                                if (sampleData.samples && fileInfo.type === 'random') {
+                                    buildingData.building_samples_random.push(...sampleData.samples);
+                                }
+                                console.log(`  Loaded ${fileInfo.filename}: ${sampleData.samples?.length || 0} samples`);
+                            }
+                        } catch (err) {
+                            console.warn(`Failed to load sample file: ${fileInfo.filename}`, err);
+                        }
+                    }
+                }
+
+                isDataLoaded = true;
+                document.getElementById('loadingOverlay').classList.add('hidden');
+                console.log('Data loaded successfully');
+                console.log(`Total buildings: ${buildingData.metadata?.total_buildings}`);
+                console.log(`Random samples: ${buildingData.building_samples_random?.length || 0}`);
+
+                initializeDashboard();
+
+            } catch (error) {
+                console.error('Error loading data:', error);
+                document.getElementById('loadingOverlay').classList.add('hidden');
+                document.getElementById('errorBox').classList.add('show');
+                document.getElementById('errorMessage').textContent = error.message;
+
+                // Fallback empty data
+                buildingData = {
+                    metadata: { total_buildings: 0 },
+                    summary_stats: { total_buildings: 0, avg_year_built: 0, avg_area_sqm: 0, occupancy_classes: [] },
+                    overview_occupancy_counts: {},
+                    temporal_data: [],
+                    building_samples_random: [],
+                    hierarchical_distribution: {},
+                    year_occ_flow: null,
+                    occupancy_hierarchy_sankey: null,
+                    occ_cls_occ_dict_sankey: null,
+                    mix_sc_distribution: null
+                };
+                isDataLoaded = true;
+                initializeDashboard();
+            }
+        }
+
+        function initializeDashboard() {
+            if (!isDataLoaded || !buildingData) return;
+
+            updateStatistics();
+            updateOverview();
+            populateOverviewFilters();
+            createOverviewMap();
+            populateHierarchicalOccupancyFilter();
+            createBuildingDistributionSankey();
+            createYearOccSankey();
+            createOccupancyHierarchySankey();
+            createOccClsOccDictSankey();
+            createMixScPieChart();
+        }
+
+
+        // ═══════════════════════════════════════════════════════════════
+        // STATISTICS CARDS
+        // ═══════════════════════════════════════════════════════════════
+        function updateStatistics() {
+            if (!buildingData) return;
+            const stats = buildingData.summary_stats;
+
+            const formatNumber = (num) => {
+                if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+                if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+                return num.toString();
+            };
+
+            document.getElementById('totalBuildings').textContent = formatNumber(stats.total_buildings);
+            document.getElementById('avgYear').textContent = Math.round(stats.avg_year_built).toString();
+            document.getElementById('avgArea').textContent = Math.round(stats.avg_area_sqm) + ' m²';
+            document.getElementById('occClasses').textContent = (stats.occupancy_classes?.length || 0).toString();
+        }
+
+
+        // ═══════════════════════════════════════════════════════════════
+        // OVERVIEW PIE CHART + TIMELINE
+        // ═══════════════════════════════════════════════════════════════
+        function updateOverview() {
+            if (!buildingData) return;
+
+            // --- Pie Chart ---
+            let occupancyCounts = buildingData.overview_occupancy_counts || {};
+            const total = Object.values(occupancyCounts).reduce((a, b) => a + b, 0);
+            const pieValues = Object.values(occupancyCounts);
+            const pieLabels = Object.keys(occupancyCounts);
+
+            const textArray = pieLabels.map((label, i) => {
+                const percentage = (pieValues[i] / total * 100);
+                if (percentage > 10) return `${label}<br>${percentage.toFixed(1)}%`;
+                else if (percentage > 5) return `${percentage.toFixed(1)}%`;
+                else if (percentage > 2) return `${percentage.toFixed(0)}%`;
+                else return '';
+            });
+
+            const pieData = [{
+                values: pieValues,
+                labels: pieLabels,
+                type: 'pie',
+                hole: 0.4,
+                marker: { colors: plasmaColors },
+                text: textArray,
+                textinfo: 'text',
+                textposition: 'auto',
+                textfont: { size: 12, color: 'white' },
+                insidetextorientation: 'radial',
+                hovertemplate: '%{label}<br>Count: %{value:,}<br>%{percent}<extra></extra>',
+                showlegend: true
+            }];
+
+            const pieLayout = {
+                title: { text: 'All Buildings Distribution by Occupancy Class', font: { size: 20, color: '#333' } },
+                height: 500,
+                font: { size: 14 },
+                showlegend: true,
+                legend: { orientation: 'v', yanchor: 'middle', y: 0.5, xanchor: 'left', x: 1.05 }
+            };
+
+            Plotly.newPlot('overviewChart', pieData, pieLayout, { responsive: true });
+
+            // --- Timeline ---
+            const yearCounts = {};
+            if (buildingData.temporal_data) {
+                buildingData.temporal_data.forEach(d => {
+                    const key = d.year.toString();
+                    yearCounts[key] = (yearCounts[key] || 0) + d.count;
+                });
+            }
+
+            const years = Object.keys(yearCounts).sort((a, b) => parseInt(a) - parseInt(b));
+            const counts = years.map(y => yearCounts[y]);
+            const tickvals = years.filter(y => parseInt(y) % 10 === 0);
+
+            Plotly.newPlot('overviewTimelineChart', [{
+                x: years, y: counts,
+                type: 'scatter', mode: 'lines', fill: 'tozeroy',
+                line: { color: plasmaColors[4], width: 2 },
+                fillcolor: 'rgba(189, 55, 134, 0.2)',
+                hovertemplate: 'Year: %{x}<br>Buildings: %{y:,}<extra></extra>'
+            }], {
+                title: { text: 'Building Construction Timeline', font: { size: 20, color: '#333' } },
+                xaxis: { title: 'Year', rangeslider: { visible: true }, type: 'category', tickmode: 'array', tickvals: tickvals, ticktext: tickvals },
+                yaxis: { title: 'Number of Buildings', fixedrange: false },
+                height: 400,
+                hovermode: 'x unified'
+            }, { responsive: true });
+        }
+
+
+        // ═══════════════════════════════════════════════════════════════
+        // MAP FILTERS & RENDERING
+        // ═══════════════════════════════════════════════════════════════
+        function populateOverviewFilters() {
+            const samples = buildingData?.building_samples_random;
+            if (!samples || !samples.length) return;
+
+            const populate = (selectId, options, map) => {
+                const select = document.getElementById(selectId);
+                if (!select) return;
+                select.innerHTML = options.map(opt => {
+                    const label = map && map[opt] ? `${opt} - ${map[opt]}` : opt;
+                    const value = opt === 'All' ? 'All' : opt;
+                    return `<option value="${value}">${label}</option>`;
+                }).join('');
+            };
+
+            populate('overviewOccFilter', ['All', ...new Set(samples.map(s => s.OCC_CLS).filter(Boolean))]);
+            populate('overviewMaterialFilter', ['All', ...new Set(samples.map(s => s.material_type).filter(Boolean))], materialTypeMap);
+            populate('overviewFoundationFilter', ['All', ...new Set(samples.map(s => s.foundation_type).filter(Boolean))], foundationTypeMap);
+        }
+
+        function calculateMarkerSize(area) {
+            if (!area || area <= 0) return 6;
+            return Math.max(6, Math.min(30, Math.sqrt(area) * 0.18 + 4));
+        }
+
+        function createOverviewMap() {
+            if (!buildingData || !buildingData.building_samples_random) return;
+
+            const occFilter = document.getElementById('overviewOccFilter')?.value || 'All';
+            const materialFilter = document.getElementById('overviewMaterialFilter')?.value || 'All';
+            const foundationFilter = document.getElementById('overviewFoundationFilter')?.value || 'All';
+            const colorBy = document.getElementById('overviewColorBy')?.value || 'OCC_CLS';
+            const sizeByGFA = document.getElementById('overviewSizeByGFA')?.checked || false;
+
+            let filteredData = buildingData.building_samples_random.filter(d => {
+                const occMatch = (occFilter === 'All' || d.OCC_CLS === occFilter);
+                const materialMatch = (materialFilter === 'All' || d.material_type === materialFilter);
+                const foundationMatch = (foundationFilter === 'All' || d.foundation_type === foundationFilter);
+                return d.LATITUDE && d.LONGITUDE && occMatch && materialMatch && foundationMatch;
+            });
+
+            if (filteredData.length > 75000) {
+                filteredData = filteredData.sort(() => 0.5 - Math.random()).slice(0, 75000);
+            }
+
+            if (filteredData.length === 0) {
+                document.getElementById('overviewMapPlot').innerHTML = '<p style="text-align:center; padding-top:100px;">No data available for the selected filters.</p>';
+                renderSizeLegend(false);
+                return;
+            }
+
+            const markerSizes = sizeByGFA ? filteredData.map(d => calculateMarkerSize(d['Est GFA sqmeters'])) : 8;
+            const markerOpacity = sizeByGFA ? 0.5 : 0.7;
+            const markerLine = sizeByGFA ? { width: 0 } : { width: 0.5, color: 'rgba(255,255,255,0.3)' };
+
+            let mapData = [];
+            let layoutSettings = {};
+
+            // === COLOR BY GFA (CONTINUOUS) ===
+            if (colorBy === 'Est GFA sqmeters') {
+                const gfaValues = filteredData.map(d => d['Est GFA sqmeters']);
+                const logValues = gfaValues.map(v => (v > 0 ? Math.log10(v) : 0));
+
+                mapData = [{
+                    type: 'scattermapbox',
+                    lon: filteredData.map(d => d.LONGITUDE),
+                    lat: filteredData.map(d => d.LATITUDE),
+                    mode: 'markers',
+                    marker: {
+                        size: markerSizes, color: logValues, colorscale: 'Plasma', showscale: true, opacity: markerOpacity,
+                        colorbar: { title: 'GFA (Log Scale)', titleside: 'right', tickvals: [2, 3, 4, 5, 6], ticktext: ['100m²', '1k', '10k', '100k', '1M'], y: 1, yanchor: 'top', len: 0.5, thickness: 15 }
+                    },
+                    text: filteredData.map(d =>
+                        `<b>Occupancy:</b> ${d.OCC_CLS}<br><b>Total GFA:</b> ${Math.round(d['Est GFA sqmeters'] || 0).toLocaleString()} sqm<br><b>Year:</b> ${d.year_built}`
+                    ),
+                    hovertemplate: '%{text}<extra></extra>',
+                    showlegend: false
+                }];
+                layoutSettings = { showlegend: false };
+
+            // === COLOR BY CATEGORY ===
+            } else {
+                let colorMap, sortOrder = [];
+
+                if (colorBy === 'OCC_CLS') {
+                    colorMap = FIXED_OCC_COLORS;
+                    sortOrder = ['Residential', 'Commercial', 'Government', 'Industrial', 'Assembly', 'Unclassified', 'Education', 'Utility and Misc', 'Agriculture'];
+                } else if (colorBy === 'material_type') {
+                    colorMap = FIXED_MATERIAL_COLORS;
+                    sortOrder = ['W', 'M', 'S', 'C', 'H'];
+                } else if (colorBy === 'foundation_type') {
+                    colorMap = FIXED_FOUNDATION_COLORS;
+                    sortOrder = ['B', 'S', 'C', 'I', 'P', 'W', 'F'];
+                }
+
+                const colorValues = filteredData.map(d => d[colorBy]);
+                const uniqueCats = [...new Set(colorValues)].filter(c => c != null);
+                if (sortOrder.length > 0) uniqueCats.sort((a, b) => sortOrder.indexOf(a) - sortOrder.indexOf(b));
+                else uniqueCats.sort();
+
+                const dummyTraces = uniqueCats.map(cat => ({
+                    type: 'scattermapbox', lon: [null], lat: [null], mode: 'markers',
+                    marker: { size: 10, color: colorMap[cat] || '#999' },
+                    name: colorBy === 'material_type' ? (materialTypeMap[cat] || cat) : colorBy === 'foundation_type' ? (foundationTypeMap[cat] || cat) : cat,
+                    showlegend: true, hoverinfo: 'skip'
+                }));
+
+                const mainTrace = {
+                    type: 'scattermapbox',
+                    lon: filteredData.map(d => d.LONGITUDE),
+                    lat: filteredData.map(d => d.LATITUDE),
+                    mode: 'markers',
+                    marker: { size: markerSizes, color: colorValues.map(v => colorMap[v] || '#999'), opacity: markerOpacity, line: markerLine },
+                    text: filteredData.map(d =>
+                        `<b>Year Built:</b> ${d.year_built}<br><b>Occupancy:</b> ${d.OCC_CLS || 'N/A'}<br><b>Material:</b> ${materialTypeMap[d.material_type] || d.material_type || 'N/A'}<br><b>Foundation:</b> ${foundationTypeMap[d.foundation_type] || d.foundation_type || 'N/A'}<br><b>GFA:</b> ${Math.round(d['Est GFA sqmeters'] || 0).toLocaleString()} sqm`
+                    ),
+                    hovertemplate: '%{text}<extra></extra>',
+                    showlegend: false
+                };
+
+                mapData = [mainTrace, ...dummyTraces];
+                layoutSettings = {
+                    showlegend: true,
+                    legend: {
+                        x: 1.02, y: 1, yanchor: 'top', bgcolor: 'rgba(255,255,255,0.95)', borderwidth: 0, font: { size: 11 },
+                        title: { text: colorBy === 'OCC_CLS' ? 'Occupancy Class' : colorBy === 'material_type' ? 'Material Type' : 'Foundation Type', font: { size: 13, color: '#333' } }
+                    }
+                };
+            }
+
+            // Layout - centered on Colorado
+            const layout = {
+                title: { text: `Colorado Building Distribution ${sizeByGFA ? '(Sized by GFA)' : ''} (${filteredData.length.toLocaleString()} points)`, font: { size: 20, color: '#333' } },
+                mapbox: { style: 'open-street-map', center: { lat: 39.0, lon: -105.5 }, zoom: 6 },
+                height: 600,
+                margin: { t: 50, b: 0, l: 0, r: 150 },
+                ...layoutSettings
+            };
+
+            // Preserve map view
+            const plotDiv = document.getElementById('overviewMapPlot');
+            if (plotDiv && plotDiv.layout && plotDiv.layout.mapbox) {
+                layout.mapbox.center = plotDiv.layout.mapbox.center;
+                layout.mapbox.zoom = plotDiv.layout.mapbox.zoom;
+            }
+
+            Plotly.newPlot('overviewMapPlot', mapData, layout, { responsive: true });
+            renderSizeLegend(sizeByGFA);
+        }
+
+        function renderSizeLegend(isVisible) {
+            const container = document.getElementById('mapLegendOverlay');
+            if (!isVisible) { container.style.display = 'none'; return; }
+
+            const legendSamples = [
+                { label: '100 m²', area: 100 },
+                { label: '1,000 m²', area: 1000 },
+                { label: '10,000 m²', area: 10000 },
+                { label: '50,000 m²', area: 50000 }
+            ];
+
+            let html = '<strong>Size Legend (GFA)</strong><br><br>';
+            legendSamples.forEach(item => {
+                const diameter = calculateMarkerSize(item.area) * 2;
+                html += `<div class="size-legend-item"><div class="size-legend-circle" style="width: ${diameter}px; height: ${diameter}px;"></div><span>${item.label}</span></div>`;
+            });
+            html += `<div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #eee; font-size: 0.85em; color: #555; line-height: 1.3;">
+                <em>Radius (px) = &radic;<span style="text-decoration:overline;">Area</span> × 0.18 + 4</em><br>
+                <span style="color: #777;">(Min: 6px, Max: 30px)</span>
+            </div>`;
+
+            container.innerHTML = html;
+            container.style.display = 'block';
+        }
+
+
+        // ═══════════════════════════════════════════════════════════════
+        // HIERARCHICAL DISTRIBUTION SANKEY
+        // ═══════════════════════════════════════════════════════════════
+        function populateHierarchicalOccupancyFilter() {
+            const sel = document.getElementById('hierarchicalOccupancy');
+            if (!sel || !buildingData?.hierarchical_distribution) return;
+
+            const keys = Object.keys(buildingData.hierarchical_distribution).filter(k => k !== 'all');
+            let html = '<option value="all">All Buildings</option>';
+            keys.sort().forEach(k => { html += `<option value="${k}">${k}</option>`; });
+            sel.innerHTML = html;
+        }
+
+        function createBuildingDistributionSankey() {
+            if (!buildingData || !buildingData.hierarchical_distribution) {
+                document.getElementById('buildingDistributionSankey').innerHTML = '<p>No hierarchical distribution data available.</p>';
+                return;
+            }
+
+            const UI = { NODE_PAD: 10, NODE_THICKNESS: 14, LINE_WIDTH: 1.2, FONT_SIZE: 10, TITLE_SIZE: 16, HEIGHT: 520, MARGINS: { t: 56, b: 120, l: 110, r: 110 } };
+
+            const selectedOccupancy = document.getElementById('hierarchicalOccupancy')?.value || 'all';
+            const selectedView = document.getElementById('sankeyViewSelector')?.value || 'by_count';
+
+            let dataForOccupancy = buildingData.hierarchical_distribution[selectedOccupancy];
+            if (!dataForOccupancy) {
+                document.getElementById('buildingDistributionSankey').innerHTML = '<p>No data to display for this occupancy class.</p>';
+                return;
+            }
+
+            let sankeyData = dataForOccupancy[selectedView];
+            if (!sankeyData || !sankeyData.nodes || !sankeyData.links || sankeyData.nodes.length === 0) {
+                document.getElementById('buildingDistributionSankey').innerHTML = '<p>No data to display for this view.</p>';
+                return;
+            }
+
+            const nodeIndexMap = new Map(sankeyData.nodes.map((node, i) => [node.name, i]));
+            const isGfaView = selectedView.includes('gfa');
+            const isSimplifiedView = selectedView.includes('simplified');
+
+            // x/y positions
+            const maxLevel = Math.max(...sankeyData.nodes.map(n => (n.level ?? 0)));
+            const nodeX = sankeyData.nodes.map(n => (n.level ?? 0) / (maxLevel || 1));
+
+            const nodesByLevel = new Map();
+            sankeyData.nodes.forEach((n, idx) => {
+                const lvl = n.level ?? 0;
+                if (!nodesByLevel.has(lvl)) nodesByLevel.set(lvl, []);
+                nodesByLevel.get(lvl).push({ i: idx, name: n.name });
+            });
+
+            const AREA_ORDER = ['Small', 'Medium', 'Large'];
+            const HEIGHT_ORDER = ['Short', 'Mid', 'High'];
+            const YEAR_ORDER = ['Historic (<1940)', 'Mid-Century (40-80)', 'Modern (>1980)'];
+
+            function assignY(items, preferredOrder) {
+                const ordered = [];
+                preferredOrder.forEach(name => { const hit = items.find(d => d.name === name); if (hit) ordered.push(hit); });
+                items.forEach(d => { if (!preferredOrder.includes(d.name)) ordered.push(d); });
+                const n = ordered.length || 1;
+                ordered.forEach((d, idx) => { d.y = (idx + 0.5) / n; });
+                return ordered;
+            }
+
+            const nodeY = new Array(sankeyData.nodes.length).fill(0.5);
+            for (const [, items] of nodesByLevel.entries()) {
+                const names = items.map(d => d.name);
+                let arranged;
+                if (AREA_ORDER.some(n => names.includes(n))) arranged = assignY(items, AREA_ORDER);
+                else if (HEIGHT_ORDER.some(n => names.includes(n))) arranged = assignY(items, HEIGHT_ORDER);
+                else if (YEAR_ORDER.some(n => names.includes(n))) arranged = assignY(items, YEAR_ORDER);
+                else arranged = assignY(items, []);
+                arranged.forEach(d => { nodeY[d.i] = d.y; });
+            }
+
+            const valueUnit = isGfaView ? 'sqm' : '';
+            const valueLabel = isGfaView ? 'Total GFA' : 'Count';
+
+            const plotData = [{
+                type: 'sankey', orientation: 'h', arrangement: 'snap',
+                node: {
+                    pad: UI.NODE_PAD, thickness: UI.NODE_THICKNESS,
+                    line: { color: 'white', width: UI.LINE_WIDTH },
+                    label: sankeyData.nodes.map(n => n.name),
+                    color: sankeyData.nodes.map(n => plasmaColors[(n.level ?? 0) % plasmaColors.length]),
+                    x: nodeX, y: nodeY
+                },
+                link: {
+                    source: sankeyData.links.map(link => nodeIndexMap.get(link.source)).filter(idx => idx !== undefined),
+                    target: sankeyData.links.map(link => nodeIndexMap.get(link.target)).filter(idx => idx !== undefined),
+                    value: sankeyData.links.map(link => link.value),
+                    color: 'rgba(102, 126, 234, 0.25)',
+                    hovertemplate: `%{source.label} → %{target.label}<br>${valueLabel}: %{value:,.0f} ${valueUnit}<extra></extra>`
+                }
+            }];
+
+            let viewTitle = isGfaView ? (isSimplifiedView ? 'by Total GFA (Simplified)' : 'by Total GFA') : (isSimplifiedView ? 'by Building Count (Simplified)' : 'by Building Count');
+            let title = selectedOccupancy === 'all'
+                ? `CO Building Hierarchical Distribution - All Buildings (${viewTitle})`
+                : `CO Building Hierarchical Distribution - ${selectedOccupancy} (${viewTitle})`;
+            if (sankeyData.total_buildings) title += ` (${sankeyData.total_buildings.toLocaleString()} buildings)`;
+
+            const annotations = [];
+            if (sankeyData.bin_info) {
+                let annotationText = '<b>Binning Information:</b><br>';
+                if (!isSimplifiedView) {
+                    annotationText += `<b>Area:</b> ${sankeyData.bin_info.Area}<br>`;
+                    annotationText += `<b>Height:</b> ${sankeyData.bin_info.Height}<br>`;
+                }
+                annotationText += `<b>Year:</b> ${sankeyData.bin_info.Year}`;
+                annotations.push({ x: 0.5, y: -0.25, xref: 'paper', yref: 'paper', text: annotationText, showarrow: false, font: { size: 9, color: '#555' }, align: 'center' });
+            }
+
+            Plotly.newPlot('buildingDistributionSankey', plotData, {
+                title: { text: title, font: { size: UI.TITLE_SIZE, color: '#333' } },
+                font: { size: UI.FONT_SIZE }, height: UI.HEIGHT, margin: UI.MARGINS, annotations: annotations
+            }, { responsive: true });
+        }
+
+
+        // ═══════════════════════════════════════════════════════════════
+        // YEAR → OCC → MATERIAL → FOUNDATION SANKEY
+        // ═══════════════════════════════════════════════════════════════
+        function createYearOccSankey() {
+            const el = document.getElementById('yearOccSankey');
+            const flow = buildingData?.year_occ_flow?.combination_counts || null;
+            const meta = buildingData?.year_occ_flow?.meta || {};
+            const samples = buildingData?.building_samples_random || [];
+
+            if (!flow && !samples.length) { el.innerHTML = '<p>No data available for this Sankey.</p>'; return; }
+
+            const includeMaterial = document.getElementById('toggleMaterial')?.checked ?? true;
+            const includeFoundation = document.getElementById('toggleFoundation')?.checked ?? true;
+            const metric = document.getElementById('yearOccMetric')?.value || 'count';
+            const isGFA = (metric === 'gfa') && Array.isArray(flow) && flow.length > 0;
+
+            const UI = {
+                NODE_THICKNESS: 12, NODE_PAD_WANT: 10, FONT_SIZE: 10, TITLE_SIZE: 16,
+                MARGIN_T: 48, MARGIN_R: 140, MARGIN_B: 32, MARGIN_L: 16,
+                HEIGHT: 480, LINK_RGBA: 'rgba(102, 126, 234, 0.20)', LINE_WIDTH: 1.2
+            };
+
+            const MATERIAL_NAME = { M: 'Masonry', W: 'Wood', H: 'Manufactured', S: 'Steel', C: 'Concrete' };
+            const FOUNDATION_NAME = { C: 'Crawl Space', B: 'Basement', S: 'Slab', P: 'Pier', I: 'Pile', F: 'Fill', W: 'Solid Wall' };
+
+            function truncateLabel(s, max) { s = String(s ?? ''); return s.length > (max || 22) ? s.slice(0, (max || 22) - 1) + '…' : s; }
+
+            const nodeIndex = new Map();
+            const nodes = [];
+            function getIndex(label) {
+                if (!nodeIndex.has(label)) { nodeIndex.set(label, nodes.length); nodes.push({ name: label }); }
+                return nodeIndex.get(label);
+            }
+
+            const linkMap = new Map();
+            const yearCounts = new Map();
+            const pushPair = (a, b, v) => { if (!v || !isFinite(v)) return; const key = a + '→' + b; linkMap.set(key, (linkMap.get(key) || 0) + v); };
+
+            const prefixes = ['Y:', 'O:'];
+            if (includeMaterial) prefixes.push('M:');
+            if (includeFoundation) prefixes.push('F:');
+
+            // Build chains from flow data or samples
+            if (flow) {
+                for (const r of flow) {
+                    const chain = [`Y:${r.year_band || 'Unknown'}`, `O:${r.occupancy || 'Unknown'}`];
+                    if (includeMaterial) chain.push(`M:${r.material || 'Unknown'}`);
+                    if (includeFoundation) chain.push(`F:${r.foundation || 'Unknown'}`);
+                    const v = isGFA ? (Number(r.gfa) || 0) : (Number(r.count) || 0);
+                    if (v <= 0) continue;
+                    yearCounts.set(chain[0], (yearCounts.get(chain[0]) || 0) + v);
+                    for (let i = 0; i < chain.length - 1; i++) pushPair(chain[i], chain[i + 1], v);
+                }
+            } else {
+                function yearBand(y) {
+                    if (!y || isNaN(y)) return 'Unknown';
+                    if (y > 1980) return 'Modern (>1980)';
+                    if (y >= 1940) return 'Mid-Century (1940–1980)';
+                    return 'Historic (<1940)';
+                }
+                for (const d of samples) {
+                    const chain = [`Y:${yearBand(d.year_built)}`, `O:${d.OCC_CLS || 'Unknown'}`];
+                    if (includeMaterial) chain.push(`M:${d.material_type || 'Unknown'}`);
+                    if (includeFoundation) chain.push(`F:${d.foundation_type || 'Unknown'}`);
+                    yearCounts.set(chain[0], (yearCounts.get(chain[0]) || 0) + 1);
+                    for (let i = 0; i < chain.length - 1; i++) pushPair(chain[i], chain[i + 1], 1);
+                }
+            }
+
+            // Convert pairs -> arrays
+            const sources = [], targets = [], values = [];
+            for (const [k, v] of linkMap.entries()) {
+                const [l1, l2] = k.split('→');
+                sources.push(getIndex(l1)); targets.push(getIndex(l2)); values.push(v);
+            }
+            // Root -> Year
+            const rootIndex = getIndex('R:All Buildings');
+            for (const [yLabel, v] of yearCounts.entries()) {
+                sources.push(rootIndex); targets.push(getIndex(yLabel)); values.push(v);
+            }
+
+            // Display labels
+            const displayLabels = nodes.map(n => {
+                const raw = n.name;
+                if (raw.startsWith('R:')) return 'All Buildings';
+                if (raw.startsWith('Y:')) return raw.slice(2);
+                if (raw.startsWith('O:')) return raw.slice(2);
+                if (raw.startsWith('M:')) { const s = raw.slice(2); return MATERIAL_NAME[s] || s; }
+                if (raw.startsWith('F:')) { const s = raw.slice(2); return FOUNDATION_NAME[s] || s; }
+                return raw;
+            });
+            const shortLabels = displayLabels.map(l => truncateLabel(l, 22));
+
+            // Levels and positions
+            const prefixesInOrder = ['R:', ...prefixes];
+            const prefixToLevel = Object.fromEntries(prefixesInOrder.map((p, i) => [p, i]));
+            const maxLevel = prefixesInOrder.length - 1;
+
+            const nodeX = new Array(nodes.length);
+            const nodeLevel = new Array(nodes.length);
+            const bucketsByLevel = new Map();
+            nodes.forEach((n, i) => {
+                const pref = n.name.slice(0, 2);
+                const lvl = prefixToLevel[pref] ?? 0;
+                nodeLevel[i] = lvl;
+                nodeX[i] = maxLevel ? (lvl / maxLevel) : 0;
+                if (!bucketsByLevel.has(lvl)) bucketsByLevel.set(lvl, []);
+                bucketsByLevel.get(lvl).push(i);
+            });
+
+            // Height and padding
+            const finalHeight = UI.HEIGHT;
+            const plotAreaHeight = Math.max(1, finalHeight - UI.MARGIN_T - UI.MARGIN_B);
+            const levelCounts = [];
+            for (let lvl = 0; lvl <= maxLevel; lvl++) { levelCounts.push((bucketsByLevel.get(lvl) || []).length || 1); }
+            const padPerLevel = levelCounts.map(n => Math.max(2, (plotAreaHeight - n * UI.NODE_THICKNESS) / (n + 1)));
+            const NODE_PAD = Math.min(UI.NODE_PAD_WANT, ...padPerLevel);
+
+            // Y positions
+            const nodeY = new Array(nodes.length).fill(0.5);
+            for (let lvl = 0; lvl <= maxLevel; lvl++) {
+                const arr = bucketsByLevel.get(lvl) || [];
+                const n = arr.length || 1;
+                const required = n * UI.NODE_THICKNESS + (n + 1) * NODE_PAD;
+                const extra = Math.max(0, plotAreaHeight - required);
+                const topOffset = (extra / 2) + NODE_PAD;
+                arr.forEach((idx, k) => { nodeY[idx] = (topOffset + k * (UI.NODE_THICKNESS + NODE_PAD)) / plotAreaHeight; });
+            }
+
+            // Explicit year order
+            const YEAR_ORDER_DISPLAY = meta.year_order_top_to_bottom || ['Historic (<1940)', 'Mid-Century (1940–1980)', 'Modern (>1980)'];
+            const labelToIdx = new Map(displayLabels.map((lab, i) => [lab, i]));
+            const yearIdxOrdered = YEAR_ORDER_DISPLAY.map(s => labelToIdx.get(s)).filter(i => i !== undefined);
+            if (yearIdxOrdered.length) {
+                const n = yearIdxOrdered.length;
+                const required = n * UI.NODE_THICKNESS + (n + 1) * NODE_PAD;
+                const extra = Math.max(0, plotAreaHeight - required);
+                const topOffset = (extra / 2) + NODE_PAD;
+                yearIdxOrdered.forEach((idx, k) => { nodeY[idx] = (topOffset + k * (UI.NODE_THICKNESS + NODE_PAD)) / plotAreaHeight; });
+            }
+
+            const nodeColors = nodeLevel.map(lvl => plasmaColors[lvl % plasmaColors.length]);
+            const dims = ['Year', 'Occupancy'];
+            if (includeMaterial) dims.push('Material');
+            if (includeFoundation) dims.push('Foundation');
+            const titleText = dims.join(' → ') + (isGFA ? ' — by GFA (sqm)' : ' — by Building Count');
+
+            try { Plotly.purge('yearOccSankey'); } catch (e) {}
+
+            Plotly.newPlot('yearOccSankey', [{
+                type: 'sankey', orientation: 'h', arrangement: 'snap',
+                node: {
+                    thickness: UI.NODE_THICKNESS, pad: NODE_PAD,
+                    line: { color: 'white', width: UI.LINE_WIDTH },
+                    label: shortLabels, hovertext: displayLabels, hoverinfo: 'text',
+                    x: nodeX, y: nodeY, color: nodeColors
+                },
+                link: {
+                    source: sources, target: targets, value: values,
+                    color: UI.LINK_RGBA,
+                    hovertemplate: isGFA
+                        ? '%{source.label} → %{target.label}<br><b>GFA:</b> %{value:,.0f} sqm<extra></extra>'
+                        : '%{source.label} → %{target.label}<br><b>Count:</b> %{value:,}<extra></extra>'
+                }
+            }], {
+                title: { text: titleText, font: { size: UI.TITLE_SIZE, color: '#333' } },
+                font: { size: UI.FONT_SIZE },
+                margin: { t: UI.MARGIN_T, r: UI.MARGIN_R, b: UI.MARGIN_B, l: UI.MARGIN_L },
+                height: UI.HEIGHT
+            }, { responsive: true, displaylogo: false });
+
+            updateYearOccSankeyTitle();
+        }
+
+        function handleYearOccToggleChange() {
+            updateYearOccSankeyTitle();
+            createYearOccSankey();
+        }
+
+        function updateYearOccSankeyTitle() {
+            const dims = ['Construction Year', 'Occupancy'];
+            if (document.getElementById('toggleMaterial')?.checked) dims.push('Material');
+            if (document.getElementById('toggleFoundation')?.checked) dims.push('Foundation');
+            const el = document.getElementById('yearOccSankeyTitle');
+            if (el) el.textContent = dims.join(' → ');
+        }
+
+        async function downloadYearOccSankey() {
+            const gd = document.getElementById('yearOccSankey');
+            if (!gd) { alert('Plot not found'); return; }
+
+            const format = document.getElementById('yearOccExportFormat')?.value || 'png';
+            const scale = parseInt(document.getElementById('yearOccExportScale')?.value || '3', 10);
+            const transparent = !!document.getElementById('yearOccTransparentBg')?.checked;
+
+            const rect = gd.getBoundingClientRect();
+            const width = Math.max(800, Math.round(rect.width));
+            const height = (gd._fullLayout && gd._fullLayout.height) ? gd._fullLayout.height : 560;
+
+            const prevPaper = gd.layout?.paper_bgcolor ?? null;
+            const prevPlot = gd.layout?.plot_bgcolor ?? null;
+            const paper = transparent ? 'rgba(0,0,0,0)' : 'white';
+            const plot = transparent ? 'rgba(0,0,0,0)' : 'white';
+
+            try {
+                await Plotly.relayout(gd, { 'paper_bgcolor': paper, 'plot_bgcolor': plot });
+                await Plotly.downloadImage(gd, {
+                    format: format,
+                    filename: `sankey_year_occ_${Date.now()}`,
+                    width: (format === 'svg') ? width : width * scale,
+                    height: (format === 'svg') ? height : height * scale,
+                    scale: 1
+                });
+            } catch (err) {
+                console.error(err);
+                alert('Export failed. See console for details.');
+            } finally {
+                await Plotly.relayout(gd, { 'paper_bgcolor': prevPaper, 'plot_bgcolor': prevPlot });
+            }
+        }
+
+
+        // ═══════════════════════════════════════════════════════════════
+        // OCCUPANCY CLASS HIERARCHY SANKEY (OCC_CLS → PRIM_OCC)
+        // ═══════════════════════════════════════════════════════════════
+        function createOccupancyHierarchySankey() {
+            if (!buildingData || !buildingData.occupancy_hierarchy_sankey) {
+                document.getElementById('occupancyHierarchySankey').innerHTML = '<p>Occupancy hierarchy data not available (PRIM_OCC column may be missing in dataset).</p>';
+                return;
+            }
+
+            const data = buildingData.occupancy_hierarchy_sankey;
+            const occClsNodes = data.nodes.filter(n => n.name.endsWith(' (Class)'));
+            const baseColors = getPlasmaColors(occClsNodes.length);
+            const occClsColorMap = {};
+            occClsNodes.forEach((node, index) => { occClsColorMap[node.name] = baseColors[index]; });
+
+            const nodeColors = data.nodes.map(node => occClsColorMap[node.name] || '#cccccc');
+            const linkColors = data.links.source.map(sourceIndex => {
+                const color = occClsColorMap[data.nodes[sourceIndex].name] || 'rgb(180,180,180)';
+                return color.replace(')', ', 0.4)').replace('rgb', 'rgba');
+            });
+
+            const originalValues = data.links.value;
+            const scaledValues = originalValues.map(v => Math.sqrt(v));
+
+            const originalNodeTotals = Array(data.nodes.length).fill(0);
+            data.links.source.forEach((sourceIndex, i) => {
+                originalNodeTotals[sourceIndex] += originalValues[i];
+                originalNodeTotals[data.links.target[i]] += originalValues[i];
+            });
+
+            Plotly.newPlot('occupancyHierarchySankey', [{
+                type: 'sankey', orientation: 'h',
+                node: {
+                    pad: 20, thickness: 20, line: { color: 'white', width: 1.5 },
+                    label: data.nodes.map(n => n.name), color: nodeColors,
+                    customdata: originalNodeTotals,
+                    hovertemplate: '<b>%{label}</b><br>Total Count: %{customdata:,}<extra></extra>'
+                },
+                link: {
+                    source: data.links.source, target: data.links.target,
+                    value: scaledValues, color: linkColors,
+                    customdata: originalValues,
+                    hovertemplate: '%{source.label} → %{target.label}<br><b>Count: %{customdata:,}</b><extra></extra>'
+                }
+            }], {
+                title: { text: 'Flow from Occupancy Class to Primary Occupancy', font: { size: 18, color: '#333' } },
+                font: { size: 10 },
+                height: 1200
+            }, { responsive: true });
+        }
+
+
+        // ═══════════════════════════════════════════════════════════════
+        // OCC_CLS → NSI occtype SANKEY (from OCC_DICT)
+        // ═══════════════════════════════════════════════════════════════
+        function createOccClsOccDictSankey() {
+            const container = document.getElementById('occClsOccDictSankey');
+            if (!container) return;
+            if (!buildingData) { container.innerHTML = '<p>Data not loaded.</p>'; return; }
+
+            const aggPack = buildingData.occ_cls_occ_dict_sankey;
+            const agg = aggPack?.by_points || aggPack?.by_buildings;
+
+            if (!agg || !agg.nodes || !Array.isArray(agg.nodes) || agg.nodes.length === 0) {
+                container.innerHTML = '<p>OCC_CLS → NSI occtype data not available (OCC_DICT column may be missing in dataset).</p>';
+                return;
+            }
+
+            const nodes = agg.nodes.map(n => n.name || n.label || String(n));
+            const sources = agg.links.source;
+            const targets = agg.links.target;
+            const values = agg.links.value;
+
+            // Color left-side OCC_CLS nodes
+            const leftOccNodes = nodes.map((label, idx) => ({ label, idx })).filter(n => n.label && n.label.endsWith('(Class)'));
+            const baseColors = getPlasmaColors(leftOccNodes.length);
+            const colorMap = {};
+            leftOccNodes.forEach((n, i) => { colorMap[n.label] = baseColors[i]; });
+
+            const nodeColors = nodes.map(lbl => colorMap[lbl] || '#cccccc');
+            const linkColors = sources.map(si => {
+                const c = colorMap[nodes[si]] || 'rgb(180,180,180)';
+                return c.replace(')', ', 0.35)').replace('rgb', 'rgba');
+            });
+
+            const scaledValues = values.map(v => Math.sqrt(v));
+
+            const originalNodeTotals = Array(nodes.length).fill(0);
+            sources.forEach((s, i) => {
+                originalNodeTotals[s] += values[i];
+                originalNodeTotals[targets[i]] += values[i];
+            });
+
+            Plotly.newPlot('occClsOccDictSankey', [{
+                type: 'sankey', orientation: 'h',
+                node: {
+                    pad: 15, thickness: 24, line: { color: 'white', width: 1.5 },
+                    label: nodes, color: nodeColors,
+                    customdata: originalNodeTotals,
+                    hovertemplate: '<b>%{label}</b><br>Total Points: %{customdata:,}<extra></extra>'
+                },
+                link: {
+                    source: sources, target: targets,
+                    value: scaledValues, color: linkColors,
+                    customdata: values,
+                    hovertemplate: '%{source.label} → %{target.label}<br><b>Points: %{customdata:,}</b><extra></extra>'
+                }
+            }], {
+                title: { text: 'OCC_CLS → NSI occtype matches', font: { size: 18, color: '#333' } },
+                font: { size: 10 },
+                height: 1200,
+                margin: { l: 150, r: 200 }
+            }, { responsive: true });
+        }
+
+
+        // ═══════════════════════════════════════════════════════════════
+        // MIX_SC PIE CHART
+        // ═══════════════════════════════════════════════════════════════
+        function createMixScPieChart() {
+            if (!buildingData || !buildingData.mix_sc_distribution) {
+                document.getElementById('mixScPieChart').innerHTML = '<p>MIX_SC distribution data not available (MIX_SC column may be missing in dataset).</p>';
+                return;
+            }
+
+            const includeSameType = document.getElementById('toggleSameType').checked;
+            let labels = Object.keys(buildingData.mix_sc_distribution);
+            let values = Object.values(buildingData.mix_sc_distribution);
+
+            if (!includeSameType) {
+                const sameTypeIndex = labels.indexOf('Same Type Only');
+                if (sameTypeIndex > -1) {
+                    labels.splice(sameTypeIndex, 1);
+                    values.splice(sameTypeIndex, 1);
+                }
+            }
+
+            if (labels.length === 0) {
+                document.getElementById('mixScPieChart').innerHTML = '<p>No data to display for the current selection.</p>';
+                return;
+            }
+
+            const colorMap = {
+                'Same Type Only': '#2E7D32',
+                'Same & Different Types (MIX_SC2)': '#FDD835',
+                '1 Conflict Type (MIX_SC1)': '#FF9800',
+                '>1 Conflict Types (MIX_SC3)': '#E53935'
+            };
+            const pieColors = labels.map(label => colorMap[label] || '#999');
+
+            Plotly.newPlot('mixScPieChart', [{
+                values: values,
+                labels: labels,
+                type: 'pie',
+                hole: 0.4,
+                marker: { colors: pieColors, line: { color: 'white', width: 1 } },
+                textinfo: 'percent',
+                textposition: 'inside',
+                insidetextorientation: 'radial',
+                hovertemplate: '<b>%{label}</b><br>Building Count: %{value:,}<br>%{percent}<extra></extra>'
+            }], {
+                title: { text: 'Building Homogeneity Distribution', font: { size: 20, color: '#333' } },
+                height: 500,
+                showlegend: true,
+                legend: { orientation: 'v', yanchor: 'middle', y: 0.5, xanchor: 'left', x: 1.05 }
+            }, { responsive: true });
+        }
+
+
+        // ═══════════════════════════════════════════════════════════════
+        // EXPORT FUNCTIONS
+        // ═══════════════════════════════════════════════════════════════
+        function exportChart(chartId, name) {
+            const plotDiv = document.getElementById(chartId);
+            if (plotDiv) {
+                Plotly.downloadImage(plotDiv, { format: 'png', width: 1200, height: 800, filename: name });
+            }
+        }
+
+        function exportAllData() {
+            if (!buildingData) return;
+            const dataStr = JSON.stringify(buildingData, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'co_building_analysis_data.json';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+
+        // ═══════════════════════════════════════════════════════════════
+        // INITIALIZATION
+        // ═══════════════════════════════════════════════════════════════
+        loadData();
+
+    </script>
+</body>
+</html>
